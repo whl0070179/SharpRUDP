@@ -6,7 +6,6 @@ using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Web.Script.Serialization;
 
 namespace SharpRUDP
 {
@@ -14,21 +13,30 @@ namespace SharpRUDP
     {
         public bool IsServer { get; set; }
         public ConnectionState State { get; set; }
+        public int SendFrequencyMs { get; set; }
+        public int RecvFrequencyMs { get; set; }
+        public int PacketIdLimit { get; set; }
+        public int SequenceLimit { get; set; }
+        public int ClientStartSequence { get; set; }
+        public int ServerStartSequence { get; set; }
+        public int MTU { get; set; }
 
+        private List<int> _confirmed { get; set; }
+        private List<string> _pendingReset { get; set; }
         private Queue<RUDPPacket> _sendQueue { get; set; }
         private Queue<RUDPPacket> _recvQueue { get; set; }
-        private Dictionary<string, RUDPSequence> _sequences { get; set; }
         private Queue<RUDPPacket> _unconfirmed { get; set; }
-        private List<int> _confirmed { get; set; }
         private Dictionary<string, IPEndPoint> _clients { get; set; }
-        private List<string> _pendingReset { get; set; }
+        private Dictionary<string, RUDPSequence> _sequences { get; set; }
 
+        private int _maxMTU = 0;
         private bool _isAlive = false;
         private bool _resetFlag = false;
         private object _ackMutex = new object();
         private object _rstMutex = new object();
         private object _sendMutex = new object();
         private object _recvMutex = new object();
+        private object _debugMutex = new object();
         private object _clientMutex = new object();
         private object _sequenceMutex = new object();
         private byte[] _packetHeader = { 0xDE, 0xAD, 0xBE, 0xEF };
@@ -36,12 +44,29 @@ namespace SharpRUDP
         private Thread _thSend;
         private Thread _thRecv;
 
+        public RUDPConnection()
+        {
+            IsServer = false;
+            MTU = 1500;
+            _maxMTU = (int)(MTU * 0.80);
+            SendFrequencyMs = 10;
+            RecvFrequencyMs = 10;
+            PacketIdLimit = int.MaxValue / 2;
+            SequenceLimit = int.MaxValue / 2;
+            ClientStartSequence = 100;
+            ServerStartSequence = 200;
+            State = ConnectionState.CLOSED;
+        }
+
         private void Debug(object obj, params object[] args)
         {
-            RUDPLogger.IsServer = IsServer;
-            Console.ForegroundColor = IsServer ? ConsoleColor.Cyan : ConsoleColor.Green;
-            RUDPLogger.Info(obj, args);
-            Console.ResetColor();
+            lock (_debugMutex)
+            {
+                RUDPLogger.IsServer = IsServer;
+                Console.ForegroundColor = IsServer ? ConsoleColor.Cyan : ConsoleColor.Green;
+                RUDPLogger.Info(obj, args);
+                Console.ResetColor();
+            }
         }
 
         public void Connect(string address, int port)
@@ -62,7 +87,7 @@ namespace SharpRUDP
         }
 
         public virtual void Initialize(bool startThreads = true)
-        {            
+        {
             _isAlive = true;
             _resetFlag = false;
             _confirmed = new List<int>();
@@ -83,7 +108,7 @@ namespace SharpRUDP
                 while (_isAlive && !_resetFlag)
                 {
                     ProcessSendQueue();
-                    Thread.Sleep(10);
+                    Thread.Sleep(SendFrequencyMs);
                 }
             });
             _thRecv = new Thread(() =>
@@ -91,7 +116,7 @@ namespace SharpRUDP
                 while (_isAlive && !_resetFlag)
                 {
                     ProcessRecvQueue();
-                    Thread.Sleep(10);
+                    Thread.Sleep(RecvFrequencyMs);
                 }
                 if (_resetFlag)
                 {
@@ -140,14 +165,14 @@ namespace SharpRUDP
 
         public void Send(string data)
         {
-            Send(RemoteEndPoint, RUDPPacketType.DAT, data);
+            Send(RemoteEndPoint, RUDPPacketType.DAT, Encoding.ASCII.GetBytes(data));
         }
 
-        public void Send(IPEndPoint destination, RUDPPacketType type = RUDPPacketType.DAT, string data = null)
+        public void Send(IPEndPoint destination, RUDPPacketType type = RUDPPacketType.DAT, byte[] data = null)
         {
             InitSequence(destination);
             RUDPSequence sq = _sequences[destination.ToString()];
-            if ((!string.IsNullOrEmpty(data) && data.Length < 4) || data == null)
+            if ((data != null && data.Length < _maxMTU) || data == null)
             {
                 lock (_sequenceMutex)
                 {
@@ -157,33 +182,34 @@ namespace SharpRUDP
                             Dst = destination,
                             Id = sq.PacketId,
                             Type = type,
-                            Data = string.IsNullOrEmpty(data) ? null : Encoding.ASCII.GetBytes(data)
+                            Data = data
                         });
                     sq.PacketId++;
                 }
             }
-            else if (!string.IsNullOrEmpty(data) && data.Length > 4)
+            else if (data != null && data.Length >= _maxMTU)
             {
                 lock (_sendMutex)
                 {
-                    int i = 0;
-                    string str = data;
                     lock (_sequenceMutex)
                     {
+                        int i = 0;
                         List<RUDPPacket> PacketsToSend = new List<RUDPPacket>();
-                        while (str.Length > 0)
+                        while (i < data.Length)
                         {
-                            str = string.Join("", data.Skip(i).Take(4));
-                            if (str.Length == 0)
-                                break;
-                            i += 4;
+                            int min = i;
+                            int max = _maxMTU;
+                            if ((min + max) > data.Length)
+                                max = data.Length - min;
+                            byte[] buf = data.Skip(i).Take(max).ToArray();
                             PacketsToSend.Add(new RUDPPacket()
                             {
                                 Dst = destination,
                                 Id = sq.PacketId,
                                 Type = type,
-                                Data = string.IsNullOrEmpty(str) ? null : Encoding.ASCII.GetBytes(str)
+                                Data = buf
                             });
+                            i += _maxMTU;
                         }
                         lock (_sendMutex)
                             foreach (RUDPPacket p in PacketsToSend)
@@ -198,7 +224,7 @@ namespace SharpRUDP
             else
                 throw new Exception("This should not happen");
             lock (_sequenceMutex)
-                if (sq.PacketId > 100)
+                if (sq.PacketId > PacketIdLimit)
                     sq.PacketId = 0;
         }
 
@@ -226,8 +252,8 @@ namespace SharpRUDP
                     _sequences[ep.ToString()] = new RUDPSequence()
                     {
                         EndPoint = ep,
-                        Local = IsServer ? 200 : 100,
-                        Remote = IsServer ? 100 : 200,
+                        Local = IsServer ? ServerStartSequence : ClientStartSequence,
+                        Remote = IsServer ? ClientStartSequence : ServerStartSequence,
                         PacketId = 0,
                         SkippedPackets = new List<int>()
                     };
@@ -275,10 +301,10 @@ namespace SharpRUDP
                 while (_sendQueue.Count != 0)
                     PacketsToSend.Add(_sendQueue.Dequeue());
 
-            /*
-            if (PacketsToSend.Count > 0)
-                foreach (RUDPPacket p in PacketsToSend)
-                    Debug("SEND QUEUE: {0}", p);*/
+            if (RUDPLogger.LogLevel == RUDPLogger.RUDPLoggerLevel.Trace)
+                if (PacketsToSend.Count > 0)
+                    foreach (RUDPPacket p in PacketsToSend)
+                        Debug("SEND QUEUE: {0}", p);
 
             List<RUDPPacket> sentPackets = new List<RUDPPacket>();
             foreach (RUDPPacket p in PacketsToSend)
@@ -434,7 +460,7 @@ namespace SharpRUDP
                 {
                     if (kvpEndpoint.Packets.Where(x => x.Type != RUDPPacketType.ACK && x.Type != RUDPPacketType.NUL).Count() > 0)
                         Send(kvpEndpoint.Source, RUDPPacketType.ACK);
-                    if (IsServer && kvpEndpoint.Packets.Last().Seq > 120)
+                    if (IsServer && kvpEndpoint.Packets.Last().Seq > SequenceLimit)
                         lock (_rstMutex)
                             _pendingReset.Add(kvpEndpoint.Source.ToString());
                 }

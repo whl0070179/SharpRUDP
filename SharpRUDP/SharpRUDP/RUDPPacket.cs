@@ -32,14 +32,14 @@ namespace SharpRUDP
             return _js.Deserialize<RUDPPacket>(Encoding.ASCII.GetString(data.Skip(header.Length).ToArray()));
         }
 
-        public override string ToString()
-        {
-            return _js.Serialize(this);
-        }
-
         public byte[] ToByteArray(byte[] header)
         {
             return header.Concat(Encoding.ASCII.GetBytes(_js.Serialize(this))).ToArray();
+        }
+
+        public override string ToString()
+        {
+            return _js.Serialize(this);
         }
     }
 }

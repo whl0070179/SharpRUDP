@@ -79,7 +79,7 @@ namespace SharpRUDP.Test
             for (int i = 0; i < 50; i++)
                 c.Send(i.ToString());
 
-            Thread.Sleep(2000);
+            Console.ReadKey();
             Console.WriteLine("====================================");
             Console.WriteLine("END OF TESTS, PRESS ANY KEY");
             Console.WriteLine("====================================");

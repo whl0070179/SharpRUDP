@@ -6,8 +6,9 @@ namespace SharpRUDP
     {
         public enum RUDPLoggerLevel
         {
+            Trace = 0,
             Info = 1,
-            Trace = 0
+            None = 99,
         }
 
         public static bool IsServer = false;
