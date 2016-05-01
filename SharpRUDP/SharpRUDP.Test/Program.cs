@@ -7,13 +7,15 @@ namespace SharpRUDP.Test
     {
         static void Main(string[] args)
         {
-            RUDPServer s = new RUDPServer();
+            RUDPLogger.LogLevel = RUDPLogger.RUDPLoggerLevel.Info;
+
+            RUDPConnection s = new RUDPConnection();
             s.Listen("127.0.0.1", 80);
             Console.WriteLine("Server started");
 
             Console.ReadKey();
 
-            RUDPClient c = new RUDPClient();
+            RUDPConnection c = new RUDPConnection();
             c.Connect("127.0.0.1", 80);
 
             //Console.ReadKey(); c.Send(":D"); c.Send(":D");

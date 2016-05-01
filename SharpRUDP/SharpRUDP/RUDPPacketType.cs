@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace SharpRUDP
+﻿namespace SharpRUDP
 {
     public enum RUDPPacketType
     {
@@ -9,13 +7,5 @@ namespace SharpRUDP
         RST,
         DAT,
         ACK
-    }
-
-    [Flags]
-    public enum RUDPPacketFlags
-    {
-        NUL = 0,
-        ACK,
-        RST
     }
 }

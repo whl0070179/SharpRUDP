@@ -43,13 +43,13 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="RUDPClient.cs" />
-    <Compile Include="RUDPCommon.cs" />
+    <Compile Include="RUDPConnectionState.cs" />
     <Compile Include="RUDPConnection.cs" />
+    <Compile Include="RUDPLogger.cs" />
     <Compile Include="RUDPPacket.cs" />
+    <Compile Include="RUDPPacketFlags.cs" />
     <Compile Include="RUDPPacketType.cs" />
     <Compile Include="RUDPSequence.cs" />
-    <Compile Include="RUDPServer.cs" />
     <Compile Include="RUDPSocket.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

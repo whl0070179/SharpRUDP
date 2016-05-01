@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 
 namespace SharpRUDP
@@ -78,13 +79,13 @@ namespace SharpRUDP
 
         public virtual int PacketSending(IPEndPoint endPoint, byte[] data, int length)
         {
-            //Console.WriteLine("SEND -> [{0}]{1}: {2}", _idPacket, endPoint, Encoding.ASCII.GetString(data, 0, length));
+            RUDPLogger.Trace("SEND -> {0}: {1}", endPoint, Encoding.ASCII.GetString(data, 0, length));
             return -1;
         }
 
         public virtual void PacketReceive(IPEndPoint ep, byte[] data, int length)
         {
-            // Console.WriteLine("RECV <- {0}: {1}", ep, Encoding.ASCII.GetString(data, 0, length));
+            RUDPLogger.Trace("RECV <- {0}: {1}", ep, Encoding.ASCII.GetString(data, 0, length));
         }
     }
 }

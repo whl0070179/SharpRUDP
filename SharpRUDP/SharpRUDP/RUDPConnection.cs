@@ -14,40 +14,34 @@ namespace SharpRUDP
     {
         public bool IsServer { get; set; }
         public ConnectionState State { get; set; }
-        public Queue<RUDPPacket> SendQueue { get; set; }
-        public Queue<RUDPPacket> RecvQueue { get; set; }
-        public Dictionary<string, RUDPSequence> Sequences { get; set; }
-        public Queue<RUDPPacket> Unconfirmed { get; set; }
-        public List<int> Confirmed { get; set; }
-        public Dictionary<string, IPEndPoint> ConnectedClients { get; set; }
-        public List<string> PendingReset { get; set; }
 
-        private bool IsAlive = false;
-        private bool ResetFlag = false;
+        private Queue<RUDPPacket> _sendQueue { get; set; }
+        private Queue<RUDPPacket> _recvQueue { get; set; }
+        private Dictionary<string, RUDPSequence> _sequences { get; set; }
+        private Queue<RUDPPacket> _unconfirmed { get; set; }
+        private List<int> _confirmed { get; set; }
+        private Dictionary<string, IPEndPoint> _clients { get; set; }
+        private List<string> _pendingReset { get; set; }
+
+        private bool _isAlive = false;
+        private bool _resetFlag = false;
         private object _ackMutex = new object();
         private object _rstMutex = new object();
         private object _sendMutex = new object();
         private object _recvMutex = new object();
-        private object _debugMutex = new object();
         private object _clientMutex = new object();
         private object _sequenceMutex = new object();
         private byte[] _packetHeader = { 0xDE, 0xAD, 0xBE, 0xEF };
-        private JavaScriptSerializer _js = new JavaScriptSerializer();
 
         private Thread _thSend;
         private Thread _thRecv;
 
-        public void Debug(object obj, params object[] args)
+        private void Debug(object obj, params object[] args)
         {
-            lock (_debugMutex)
-            {
-                Console.ForegroundColor = IsServer ? ConsoleColor.Cyan : ConsoleColor.Green;
-                if (obj.GetType() == typeof(string))
-                    Console.WriteLine(string.Format("{0} {1}", IsServer ? "[S]" : "[C]", string.Format((string)obj, args)));
-                else
-                    Console.WriteLine(string.Format("{0} {1}", IsServer ? "[S]" : "[C]", obj.ToString()));
-                Console.ResetColor();
-            }
+            RUDPLogger.IsServer = IsServer;
+            Console.ForegroundColor = IsServer ? ConsoleColor.Cyan : ConsoleColor.Green;
+            RUDPLogger.Info(obj, args);
+            Console.ResetColor();
         }
 
         public void Connect(string address, int port)
@@ -68,16 +62,16 @@ namespace SharpRUDP
         }
 
         public virtual void Initialize(bool startThreads = true)
-        {
-            IsAlive = true;
-            ResetFlag = false;
-            Confirmed = new List<int>();
-            PendingReset = new List<string>();
-            SendQueue = new Queue<RUDPPacket>();
-            RecvQueue = new Queue<RUDPPacket>();
-            Unconfirmed = new Queue<RUDPPacket>();
-            Sequences = new Dictionary<string, RUDPSequence>();
-            ConnectedClients = new Dictionary<string, IPEndPoint>();
+        {            
+            _isAlive = true;
+            _resetFlag = false;
+            _confirmed = new List<int>();
+            _pendingReset = new List<string>();
+            _sendQueue = new Queue<RUDPPacket>();
+            _recvQueue = new Queue<RUDPPacket>();
+            _unconfirmed = new Queue<RUDPPacket>();
+            _sequences = new Dictionary<string, RUDPSequence>();
+            _clients = new Dictionary<string, IPEndPoint>();
             if (startThreads)
                 StartThreads();
         }
@@ -86,7 +80,7 @@ namespace SharpRUDP
         {
             _thSend = new Thread(() =>
             {
-                while (IsAlive && !ResetFlag)
+                while (_isAlive && !_resetFlag)
                 {
                     ProcessSendQueue();
                     Thread.Sleep(10);
@@ -94,12 +88,12 @@ namespace SharpRUDP
             });
             _thRecv = new Thread(() =>
             {
-                while (IsAlive && !ResetFlag)
+                while (_isAlive && !_resetFlag)
                 {
                     ProcessRecvQueue();
                     Thread.Sleep(10);
                 }
-                if (ResetFlag)
+                if (_resetFlag)
                 {
                     new Thread(() =>
                     {
@@ -115,7 +109,7 @@ namespace SharpRUDP
 
         public void Disconnect()
         {
-            IsAlive = false;
+            _isAlive = false;
             _thSend.Abort();
             _thRecv.Abort();
             if (IsServer)
@@ -131,14 +125,14 @@ namespace SharpRUDP
             base.PacketReceive(ep, data, length);
             if (length > _packetHeader.Length && data.Take(_packetHeader.Length).SequenceEqual(_packetHeader))
             {
-                RUDPPacket p = _js.Deserialize<RUDPPacket>(Encoding.ASCII.GetString(data.Skip(_packetHeader.Length).ToArray()));
+                RUDPPacket p = RUDPPacket.Deserialize(_packetHeader, data);
                 p.Src = IsServer ? ep : RemoteEndPoint;
                 p.Received = DateTime.Now;
                 if (p.Type == RUDPPacketType.RST && !IsServer)
-                    ResetFlag = true;
+                    _resetFlag = true;
                 else
                     lock (_recvMutex)
-                        RecvQueue.Enqueue(p);
+                        _recvQueue.Enqueue(p);
             }
             else
                 Console.WriteLine("[{0}] RAW RECV: [{1}]", GetType().ToString(), Encoding.ASCII.GetString(data, 0, length));
@@ -152,13 +146,13 @@ namespace SharpRUDP
         public void Send(IPEndPoint destination, RUDPPacketType type = RUDPPacketType.DAT, string data = null)
         {
             InitSequence(destination);
-            RUDPSequence sq = Sequences[destination.ToString()];
+            RUDPSequence sq = _sequences[destination.ToString()];
             if ((!string.IsNullOrEmpty(data) && data.Length < 4) || data == null)
             {
                 lock (_sequenceMutex)
                 {
                     lock (_sendMutex)
-                        SendQueue.Enqueue(new RUDPPacket()
+                        _sendQueue.Enqueue(new RUDPPacket()
                         {
                             Dst = destination,
                             Id = sq.PacketId,
@@ -195,7 +189,7 @@ namespace SharpRUDP
                             foreach (RUDPPacket p in PacketsToSend)
                             {
                                 p.Qty = PacketsToSend.Count;
-                                SendQueue.Enqueue(p);
+                                _sendQueue.Enqueue(p);
                             }
                         sq.PacketId++;
                     }
@@ -211,7 +205,7 @@ namespace SharpRUDP
         private void ManualSend(RUDPPacket p)
         {
             lock (_sendMutex)
-                SendQueue.Enqueue(p);
+                _sendQueue.Enqueue(p);
         }
 
         // ###############################################################################################################################
@@ -227,9 +221,9 @@ namespace SharpRUDP
         {
             lock (_sequenceMutex)
             {
-                if (!Sequences.ContainsKey(ep.ToString()))
+                if (!_sequences.ContainsKey(ep.ToString()))
                 {
-                    Sequences[ep.ToString()] = new RUDPSequence()
+                    _sequences[ep.ToString()] = new RUDPSequence()
                     {
                         EndPoint = ep,
                         Local = IsServer ? 200 : 100,
@@ -237,7 +231,7 @@ namespace SharpRUDP
                         PacketId = 0,
                         SkippedPackets = new List<int>()
                     };
-                    Debug("NEW SEQUENCE: {0}", Sequences[ep.ToString()]);
+                    Debug("NEW SEQUENCE: {0}", _sequences[ep.ToString()]);
                     return true;
                 }
                 return false;
@@ -250,8 +244,8 @@ namespace SharpRUDP
 
             List<RUDPPacket> resettedPackets = new List<RUDPPacket>();
             lock (_ackMutex)
-                while (Unconfirmed.Count > 0)
-                    resettedPackets.Add(Unconfirmed.Dequeue());
+                while (_unconfirmed.Count > 0)
+                    resettedPackets.Add(_unconfirmed.Dequeue());
 
             Disconnect();
             Initialize(false);
@@ -271,15 +265,15 @@ namespace SharpRUDP
         {
             if (IsServer)
                 lock (_clientMutex)
-                    Parallel.ForEach(ConnectedClients, (c) => { Send(c.Value, RUDPPacketType.NUL); });
+                    Parallel.ForEach(_clients, (c) => { Send(c.Value, RUDPPacketType.NUL); });
         }
 
         public void ProcessSendQueue()
         {
             List<RUDPPacket> PacketsToSend = new List<RUDPPacket>();
             lock (_sendMutex)
-                while (SendQueue.Count != 0)
-                    PacketsToSend.Add(SendQueue.Dequeue());
+                while (_sendQueue.Count != 0)
+                    PacketsToSend.Add(_sendQueue.Dequeue());
 
             /*
             if (PacketsToSend.Count > 0)
@@ -291,40 +285,40 @@ namespace SharpRUDP
             {
                 lock (_sequenceMutex)
                 {
-                    while (!Sequences.ContainsKey(p.Dst.ToString()))
+                    while (!_sequences.ContainsKey(p.Dst.ToString()))
                         InitSequence(p.Dst);
-                    RUDPSequence sq = Sequences[p.Dst.ToString()];
+                    RUDPSequence sq = _sequences[p.Dst.ToString()];
                     p.Seq = sq.Local;
                     sq.Local++;
                 }
 
                 lock (_ackMutex)
                 {
-                    p.ACK = Confirmed.ToArray();
-                    Confirmed.Clear();
+                    p.ACK = _confirmed.ToArray();
+                    _confirmed.Clear();
                 }
 
                 if (IsServer)
                     lock (_rstMutex)
-                        if (PendingReset.Contains(p.Dst.ToString()))
+                        if (_pendingReset.Contains(p.Dst.ToString()))
                         {
                             Debug("Overflow reached, resetting {0}", p.Dst);
-                            PendingReset.Remove(p.Dst.ToString());
+                            _pendingReset.Remove(p.Dst.ToString());
                             p.Flags = RUDPPacketFlags.RST;
                             lock (_sequenceMutex)
-                                Sequences.Remove(p.Dst.ToString());
+                                _sequences.Remove(p.Dst.ToString());
                         }
 
                 lock (_ackMutex)
-                    Unconfirmed.Enqueue(p);
+                    _unconfirmed.Enqueue(p);
 
                 Debug("SEND -> {0}", p);
 
                 if (p.Type == RUDPPacketType.RST)
                     lock (_sequenceMutex)
-                        Sequences.Remove(p.Dst.ToString());
+                        _sequences.Remove(p.Dst.ToString());
 
-                Send(p.Dst, _packetHeader.Concat(Encoding.ASCII.GetBytes(_js.Serialize(p))).ToArray());
+                Send(p.Dst, p.ToByteArray(_packetHeader));
             }
         }
 
@@ -332,8 +326,8 @@ namespace SharpRUDP
         {
             List<RUDPPacket> PacketsToRecv = new List<RUDPPacket>();
             lock (_recvMutex)
-                while (RecvQueue.Count != 0 && PacketsToRecv.Count < 50)
-                    PacketsToRecv.Add(RecvQueue.Dequeue());
+                while (_recvQueue.Count != 0 && PacketsToRecv.Count < 50)
+                    PacketsToRecv.Add(_recvQueue.Dequeue());
 
             //if (PacketsToRecv.Count > 0) Debug("RECV START");
 
@@ -341,11 +335,11 @@ namespace SharpRUDP
             {
                 bool processEndpoint = true;
                 bool isNewSequence = InitSequence(kvpEndpoint.Source);
-                RUDPSequence sq = Sequences[kvpEndpoint.Source.ToString()];
+                RUDPSequence sq = _sequences[kvpEndpoint.Source.ToString()];
 
                 if (!isNewSequence)
                     lock (_rstMutex)
-                        if (PendingReset.Contains(kvpEndpoint.Source.ToString()))
+                        if (_pendingReset.Contains(kvpEndpoint.Source.ToString()))
                         {
                             Debug("Pending reset {0}, not new sequence.", kvpEndpoint.Source);
                             continue;
@@ -367,7 +361,7 @@ namespace SharpRUDP
                         else
                             lock (_recvMutex)
                                 foreach (RUDPPacket pkt in kvpEndpoint.Packets)
-                                    RecvQueue.Enqueue(p);
+                                    _recvQueue.Enqueue(p);
                         processEndpoint = false;
                         break;
                     }
@@ -387,12 +381,12 @@ namespace SharpRUDP
 
                     if (p.Type == RUDPPacketType.SYN && IsServer)
                         lock (_clientMutex)
-                            if (!ConnectedClients.ContainsKey(kvpEndpoint.Source.ToString()))
+                            if (!_clients.ContainsKey(kvpEndpoint.Source.ToString()))
                             {
                                 lock (_recvMutex)
-                                    RecvQueue = new Queue<RUDPPacket>(RecvQueue.Where(x => x.Src != kvpEndpoint.Source));
+                                    _recvQueue = new Queue<RUDPPacket>(_recvQueue.Where(x => x.Src != kvpEndpoint.Source));
                                 Debug("+Client {0}", kvpEndpoint.Source.ToString());
-                                ConnectedClients.Add(kvpEndpoint.Source.ToString(), kvpEndpoint.Source);
+                                _clients.Add(kvpEndpoint.Source.ToString(), kvpEndpoint.Source);
                             }
 
                     if (p.Qty > 0 && p.Type == RUDPPacketType.DAT)
@@ -442,7 +436,7 @@ namespace SharpRUDP
                         Send(kvpEndpoint.Source, RUDPPacketType.ACK);
                     if (IsServer && kvpEndpoint.Packets.Last().Seq > 120)
                         lock (_rstMutex)
-                            PendingReset.Add(kvpEndpoint.Source.ToString());
+                            _pendingReset.Add(kvpEndpoint.Source.ToString());
                 }
             }
         }
@@ -451,8 +445,8 @@ namespace SharpRUDP
         {
             lock (_ackMutex)
             {
-                Confirmed.Add(p.Seq);
-                Unconfirmed = new Queue<RUDPPacket>(Unconfirmed.Where(x => !p.ACK.Contains(x.Seq)));
+                _confirmed.Add(p.Seq);
+                _unconfirmed = new Queue<RUDPPacket>(_unconfirmed.Where(x => !p.ACK.Contains(x.Seq)));
             }
         }
 
@@ -461,7 +455,7 @@ namespace SharpRUDP
             lock (_clientMutex)
             {
                 Debug("-Client {0}", endPoint.ToString());
-                ConnectedClients.Remove(endPoint.ToString());
+                _clients.Remove(endPoint.ToString());
                 Send(endPoint, RUDPPacketType.RST);
             }
         }
