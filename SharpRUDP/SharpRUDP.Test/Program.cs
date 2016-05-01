@@ -15,6 +15,9 @@ namespace SharpRUDP.Test
 
             RUDPClient c = new RUDPClient();
             c.Connect("127.0.0.1", 80);
+
+            //Console.ReadKey(); c.Send(":D"); c.Send(":D");
+
             /*
             Console.WriteLine("====================================");
             Console.WriteLine("COMMON SEND");
@@ -68,16 +71,10 @@ namespace SharpRUDP.Test
 
             for (int i = 0; i < 50; i++)
                 c.Send(i.ToString());
+
             c.Send("LONGLONGLONG1");
-            Thread.Sleep(315);
-            c.Send("LONGLONGLONG2");
-            Thread.Sleep(315);
-            c.Send("LONGLONGLONG3");
-            Thread.Sleep(315);
-            c.Send("LONGLONGLONG4");
-            Thread.Sleep(315);
-            c.Send("LONGLONGLONG5");
-            for (int i = 0; i < 5; i++)
+
+            for (int i = 0; i < 50; i++)
                 c.Send(i.ToString());
 
             Thread.Sleep(2000);

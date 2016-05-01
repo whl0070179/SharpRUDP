@@ -12,6 +12,8 @@ namespace SharpRUDP
         public IPEndPoint Dst { get; set; }
         [ScriptIgnore]
         public DateTime Received { get; set; }
+        [ScriptIgnore]
+        public bool Confirmed { get; set; }
 
         public int Id { get; set; }
         public int Qty { get; set; }

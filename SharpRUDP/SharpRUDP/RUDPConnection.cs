@@ -67,7 +67,7 @@ namespace SharpRUDP
             Initialize();
         }
 
-        public virtual void Initialize()
+        public virtual void Initialize(bool startThreads = true)
         {
             IsAlive = true;
             ResetFlag = false;
@@ -78,7 +78,12 @@ namespace SharpRUDP
             Unconfirmed = new Queue<RUDPPacket>();
             Sequences = new Dictionary<string, RUDPSequence>();
             ConnectedClients = new Dictionary<string, IPEndPoint>();
+            if (startThreads)
+                StartThreads();
+        }
 
+        public void StartThreads()
+        {
             _thSend = new Thread(() =>
             {
                 while (IsAlive && !ResetFlag)
@@ -130,7 +135,7 @@ namespace SharpRUDP
                 p.Src = IsServer ? ep : RemoteEndPoint;
                 p.Received = DateTime.Now;
                 if (p.Type == RUDPPacketType.RST && !IsServer)
-                    ResetConnection();
+                    ResetFlag = true;
                 else
                     lock (_recvMutex)
                         RecvQueue.Enqueue(p);
@@ -224,7 +229,14 @@ namespace SharpRUDP
             {
                 if (!Sequences.ContainsKey(ep.ToString()))
                 {
-                    Sequences[ep.ToString()] = new RUDPSequence() { EndPoint = ep, Local = IsServer ? 200 : 100, Remote = IsServer ? 100 : 200, PacketId = 0 };
+                    Sequences[ep.ToString()] = new RUDPSequence()
+                    {
+                        EndPoint = ep,
+                        Local = IsServer ? 200 : 100,
+                        Remote = IsServer ? 100 : 200,
+                        PacketId = 0,
+                        SkippedPackets = new List<int>()
+                    };
                     Debug("NEW SEQUENCE: {0}", Sequences[ep.ToString()]);
                     return true;
                 }
@@ -242,7 +254,7 @@ namespace SharpRUDP
                     resettedPackets.Add(Unconfirmed.Dequeue());
 
             Disconnect();
-            Initialize();
+            Initialize(false);
 
             Thread.Sleep(1000);
 
@@ -250,11 +262,9 @@ namespace SharpRUDP
                 ManualSend(new RUDPPacket() { Dst = RemoteEndPoint, Type = RUDPPacketType.SYN });
 
             foreach (RUDPPacket p in resettedPackets)
-            {
-                if (Sequences.ContainsKey(p.Dst.ToString()))
-                    Sequences.Remove(p.Dst.ToString());
                 ManualSend(p);
-            }
+
+            StartThreads();
         }
 
         public void SendKeepAlive()
@@ -271,11 +281,17 @@ namespace SharpRUDP
                 while (SendQueue.Count != 0)
                     PacketsToSend.Add(SendQueue.Dequeue());
 
+            /*
+            if (PacketsToSend.Count > 0)
+                foreach (RUDPPacket p in PacketsToSend)
+                    Debug("SEND QUEUE: {0}", p);*/
+
+            List<RUDPPacket> sentPackets = new List<RUDPPacket>();
             foreach (RUDPPacket p in PacketsToSend)
             {
                 lock (_sequenceMutex)
                 {
-                    if(!Sequences.ContainsKey(p.Dst.ToString()))
+                    while (!Sequences.ContainsKey(p.Dst.ToString()))
                         InitSequence(p.Dst);
                     RUDPSequence sq = Sequences[p.Dst.ToString()];
                     p.Seq = sq.Local;
@@ -288,15 +304,16 @@ namespace SharpRUDP
                     Confirmed.Clear();
                 }
 
-                lock (_rstMutex)
-                    if (PendingReset.Contains(p.Dst.ToString()))
-                    {
-                        Debug("Overflow reached, resetting {0}", p.Dst);
-                        PendingReset.Remove(p.Dst.ToString());
-                        p.Flags = RUDPPacketFlags.RST;
-                        lock (_sequenceMutex)
-                            Sequences.Remove(p.Dst.ToString());
-                    }
+                if (IsServer)
+                    lock (_rstMutex)
+                        if (PendingReset.Contains(p.Dst.ToString()))
+                        {
+                            Debug("Overflow reached, resetting {0}", p.Dst);
+                            PendingReset.Remove(p.Dst.ToString());
+                            p.Flags = RUDPPacketFlags.RST;
+                            lock (_sequenceMutex)
+                                Sequences.Remove(p.Dst.ToString());
+                        }
 
                 lock (_ackMutex)
                     Unconfirmed.Enqueue(p);
@@ -318,126 +335,115 @@ namespace SharpRUDP
                 while (RecvQueue.Count != 0 && PacketsToRecv.Count < 50)
                     PacketsToRecv.Add(RecvQueue.Dequeue());
 
-            var packetsToProcess = from x in PacketsToRecv
-                                   group x by x.Src into y
-                                   select new
-                                   {
-                                       Source = y.Key,
-                                       Packets = y.OrderBy(z => z.Seq)
-                                   };
+            //if (PacketsToRecv.Count > 0) Debug("RECV START");
 
-            foreach (var kvEndpoint in packetsToProcess)
+            foreach (var kvpEndpoint in (from x in PacketsToRecv group x by x.Src into y select new { Source = y.Key, Packets = y.OrderBy(z => z.Seq) }))
             {
-                bool ignoreEndpoint = false;
-                bool reenqueuePackets = false;
-                List<int> ProcessedPackets = new List<int>();
-                List<int> MultiProcessedPackets = new List<int>();
-                foreach (RUDPPacket p in kvEndpoint.Packets)
+                bool processEndpoint = true;
+                bool isNewSequence = InitSequence(kvpEndpoint.Source);
+                RUDPSequence sq = Sequences[kvpEndpoint.Source.ToString()];
+
+                if (!isNewSequence)
+                    lock (_rstMutex)
+                        if (PendingReset.Contains(kvpEndpoint.Source.ToString()))
+                        {
+                            Debug("Pending reset {0}, not new sequence.", kvpEndpoint.Source);
+                            continue;
+                        }
+
+                foreach (RUDPPacket p in kvpEndpoint.Packets)
                 {
-                    if(reenqueuePackets)
+                    if (sq.SkippedPackets.Contains(p.Seq))
                     {
-                        lock (_recvMutex)
-                            RecvQueue.Enqueue(p);
+                        Debug("Skip {0}", p);
                         continue;
                     }
 
-                    bool isNewSequence = InitSequence(p);
-                    RUDPSequence sq = Sequences[kvEndpoint.Source.ToString()];
-
+                    // if (IsServer) Debug("{0} vs {1}", p.Seq, sq.Remote);
                     if (p.Seq != sq.Remote)
                     {
-                        //if ((DateTime.Now - p.Received).Seconds > 2 && IsServer)
                         if (isNewSequence)
-                        {
-                            Debug("{0} != {1}", p.Seq, sq.Remote);
                             RequestConnectionReset(sq.EndPoint);
-                        }
                         else
                             lock (_recvMutex)
-                                foreach (RUDPPacket pkt in kvEndpoint.Packets)
+                                foreach (RUDPPacket pkt in kvpEndpoint.Packets)
                                     RecvQueue.Enqueue(p);
-
-                        ignoreEndpoint = true;
+                        processEndpoint = false;
                         break;
                     }
 
                     // If IsNewSequence and first packet is not a connection
                     // ignore the packets and do not process the chain :)
-                    // NOTE: Never seems to happen though
                     if (isNewSequence && IsServer && p.Type != RUDPPacketType.SYN)
                     {
                         Debug("RECV <- (IGNORE) {0}", p);
-                        ignoreEndpoint = true;
+                        processEndpoint = false;
                         break;
                     }
 
-                    sq.Remote++;
+                    lock (_sequenceMutex)
+                        sq.Remote++;
                     Debug("RECV <- {0}", p);
 
                     if (p.Type == RUDPPacketType.SYN && IsServer)
                         lock (_clientMutex)
-                            if (!ConnectedClients.ContainsKey(kvEndpoint.Source.ToString()))
+                            if (!ConnectedClients.ContainsKey(kvpEndpoint.Source.ToString()))
                             {
                                 lock (_recvMutex)
-                                    RecvQueue = new Queue<RUDPPacket>(RecvQueue.Where(x => x.Src != kvEndpoint.Source));
-                                Debug("+Client {0}", kvEndpoint.Source.ToString());
-                                ConnectedClients.Add(kvEndpoint.Source.ToString(), kvEndpoint.Source);
+                                    RecvQueue = new Queue<RUDPPacket>(RecvQueue.Where(x => x.Src != kvpEndpoint.Source));
+                                Debug("+Client {0}", kvpEndpoint.Source.ToString());
+                                ConnectedClients.Add(kvpEndpoint.Source.ToString(), kvpEndpoint.Source);
                             }
-
-                    if (MultiProcessedPackets.Contains(p.Seq))
-                    {
-                        Debug("SKIP MULTIPACKET PART {0}", p);
-                        ConfirmPacket(p);
-                        continue;
-                    }
 
                     if (p.Qty > 0 && p.Type == RUDPPacketType.DAT)
                     {
-                        List<RUDPPacket> Multipackets = kvEndpoint.Packets.Where(x => x.Id == p.Id).ToList();
+                        List<RUDPPacket> Multipackets = kvpEndpoint.Packets.Where(x => x.Id == p.Id).ToList();
                         if (Multipackets.Count == p.Qty)
                         {
                             Debug("MULTIPACKET");
+                            lock (_sequenceMutex)
+                                sq.Remote--;
                             using (MemoryStream ms = new MemoryStream())
                             {
                                 using (BinaryWriter bw = new BinaryWriter(ms))
                                     foreach (RUDPPacket mp in Multipackets)
+                                    {
                                         bw.Write(mp.Data);
+                                        lock (_sequenceMutex)
+                                            sq.SkippedPackets.Add(mp.Seq);
+                                        ConfirmPacket(mp);
+                                        lock (_sequenceMutex)
+                                            sq.Remote++;
+                                    }
                                 Debug("MULTIPACKET DATA: {0}", Encoding.ASCII.GetString(ms.ToArray()));
-                                MultiProcessedPackets.AddRange(Multipackets.Select(x => x.Seq).ToArray());
                             }
                         }
                         else
                         {
-                            reenqueuePackets = true;
                             Debug("MULTIPACKET UNCOMPLETE");
+                            ConfirmPacket(p);
                         }
                     }
-
-                    if(!reenqueuePackets)
-                        ConfirmPacket(p);
                     else
-                        lock(_recvMutex)
-                            RecvQueue.Enqueue(p);
+                        ConfirmPacket(p);
 
                     if (!IsServer && p.Flags == RUDPPacketFlags.RST)
                     {
-                        ignoreEndpoint = true;
-                        ResetFlag = true;
+                        processEndpoint = false;
                         break;
                     }
+
+                    isNewSequence = false;
                 }
 
-                if (!ignoreEndpoint)
+                if (processEndpoint)
                 {
-                    if (kvEndpoint.Packets.Where(x => x.Type != RUDPPacketType.ACK && x.Type != RUDPPacketType.NUL).Count() > 0)
-                        Send(kvEndpoint.Source, RUDPPacketType.ACK);
-                    if (IsServer && kvEndpoint.Packets.Last().Seq > 120)
+                    if (kvpEndpoint.Packets.Where(x => x.Type != RUDPPacketType.ACK && x.Type != RUDPPacketType.NUL).Count() > 0)
+                        Send(kvpEndpoint.Source, RUDPPacketType.ACK);
+                    if (IsServer && kvpEndpoint.Packets.Last().Seq > 120)
                         lock (_rstMutex)
-                            PendingReset.Add(kvEndpoint.Source.ToString());
+                            PendingReset.Add(kvpEndpoint.Source.ToString());
                 }
-
-                if (ResetFlag)
-                    break;
             }
         }
 
