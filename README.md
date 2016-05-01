@@ -31,4 +31,4 @@ I also tried to spin off my own RUDP implementation following the RFC and failin
 
 Created by Alemar Osorio (DARKGuy).
 
-Licensing is temporary free-of-charge-and-warranties for any free software development project. For now, no commercial usage is allowed. This will change in the future though.
+Licensing is temporary GPL. For now, no commercial usage is allowed. This will change in the future though.
