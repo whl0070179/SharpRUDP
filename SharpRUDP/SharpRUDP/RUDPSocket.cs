@@ -38,7 +38,7 @@ namespace SharpRUDP
             Receive();
         }
 
-        protected void Send(IPEndPoint endPoint, byte[] data)
+        internal void Send(IPEndPoint endPoint, byte[] data)
         {
             PacketSending(endPoint, data, data.Length);
             _socket.BeginSendTo(data, 0, data.Length, SocketFlags.None, endPoint, (ar) =>

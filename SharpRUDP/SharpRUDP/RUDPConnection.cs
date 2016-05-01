@@ -21,6 +21,14 @@ namespace SharpRUDP
         public int ServerStartSequence { get; set; }
         public int MTU { get; set; }
 
+        public delegate void dlgEventVoid();
+        public delegate void dlgEventConnection(IPEndPoint ep);
+        public delegate void dlgEventUserData(RUDPPacket p);
+        public event dlgEventConnection OnClientConnect;
+        public event dlgEventConnection OnClientDisconnect;
+        public event dlgEventUserData OnPacketReceived;
+        public event dlgEventVoid OnConnected;
+
         private List<int> _confirmed { get; set; }
         private List<string> _pendingReset { get; set; }
         private Queue<RUDPPacket> _sendQueue { get; set; }
@@ -413,6 +421,7 @@ namespace SharpRUDP
                                     _recvQueue = new Queue<RUDPPacket>(_recvQueue.Where(x => x.Src != kvpEndpoint.Source));
                                 Debug("+Client {0}", kvpEndpoint.Source.ToString());
                                 _clients.Add(kvpEndpoint.Source.ToString(), kvpEndpoint.Source);
+                                OnClientConnect?.Invoke(kvpEndpoint.Source);
                             }
 
                     if (p.Qty > 0 && p.Type == RUDPPacketType.DAT)
@@ -423,6 +432,7 @@ namespace SharpRUDP
                             Debug("MULTIPACKET");
                             lock (_sequenceMutex)
                                 sq.Remote--;
+                            byte[] buf;
                             using (MemoryStream ms = new MemoryStream())
                             {
                                 using (BinaryWriter bw = new BinaryWriter(ms))
@@ -435,17 +445,42 @@ namespace SharpRUDP
                                         lock (_sequenceMutex)
                                             sq.Remote++;
                                     }
-                                Debug("MULTIPACKET DATA: {0}", Encoding.ASCII.GetString(ms.ToArray()));
+                                buf = ms.ToArray();
                             }
+                            Debug("MULTIPACKET DATA: {0}", Encoding.ASCII.GetString(buf));
+                            OnPacketReceived?.Invoke(new RUDPPacket()
+                            {
+                                ACK = p.ACK,
+                                Confirmed = p.Confirmed,
+                                Data = buf,
+                                Dst = p.Dst,
+                                Flags = p.Flags,
+                                Id = p.Id,
+                                Qty = p.Qty,
+                                Received = p.Received,
+                                Seq = p.Seq,
+                                Src = p.Src,
+                                Type = p.Type
+                            });
                         }
                         else
                         {
                             Debug("MULTIPACKET UNCOMPLETE");
                             ConfirmPacket(p);
+                            OnPacketReceived?.Invoke(p);
                         }
                     }
                     else
+                    {
                         ConfirmPacket(p);
+                        OnPacketReceived?.Invoke(p);
+                    }
+
+                    if (!IsServer && p.Type == RUDPPacketType.SYN && p.Flags == RUDPPacketFlags.ACK)
+                    {
+                        State = ConnectionState.OPEN;
+                        OnConnected?.Invoke();
+                    }
 
                     if (!IsServer && p.Flags == RUDPPacketFlags.RST)
                     {
@@ -483,6 +518,7 @@ namespace SharpRUDP
                 Debug("-Client {0}", endPoint.ToString());
                 _clients.Remove(endPoint.ToString());
                 Send(endPoint, RUDPPacketType.RST);
+                OnClientDisconnect?.Invoke(endPoint);
             }
         }
     }
