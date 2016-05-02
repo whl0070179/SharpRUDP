@@ -26,8 +26,8 @@ namespace SharpRUDP
         public delegate void dlgEventUserData(RUDPPacket p);
         public event dlgEventConnection OnClientConnect;
         public event dlgEventConnection OnClientDisconnect;
+        public event dlgEventConnection OnConnected;
         public event dlgEventUserData OnPacketReceived;
-        public event dlgEventVoid OnConnected;
 
         private List<int> _confirmed { get; set; }
         private List<string> _pendingReset { get; set; }
@@ -479,7 +479,7 @@ namespace SharpRUDP
                     if (!IsServer && p.Type == RUDPPacketType.SYN && p.Flags == RUDPPacketFlags.ACK)
                     {
                         State = ConnectionState.OPEN;
-                        OnConnected?.Invoke();
+                        OnConnected?.Invoke(p.Src);
                     }
 
                     if (!IsServer && p.Flags == RUDPPacketFlags.RST)
