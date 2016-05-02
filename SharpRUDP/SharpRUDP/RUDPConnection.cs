@@ -173,10 +173,10 @@ namespace SharpRUDP
 
         public void Send(string data)
         {
-            Send(RemoteEndPoint, RUDPPacketType.DAT, Encoding.ASCII.GetBytes(data));
+            Send(RemoteEndPoint, RUDPPacketType.DAT, RUDPPacketFlags.NUL, Encoding.ASCII.GetBytes(data));
         }
 
-        public void Send(IPEndPoint destination, RUDPPacketType type = RUDPPacketType.DAT, byte[] data = null)
+        public void Send(IPEndPoint destination, RUDPPacketType type = RUDPPacketType.DAT, RUDPPacketFlags flags = RUDPPacketFlags.NUL, byte[] data = null)
         {
             InitSequence(destination);
             RUDPSequence sq = _sequences[destination.ToString()];
@@ -190,6 +190,7 @@ namespace SharpRUDP
                             Dst = destination,
                             Id = sq.PacketId,
                             Type = type,
+                            Flags = flags,
                             Data = data
                         });
                     sq.PacketId++;
@@ -215,6 +216,7 @@ namespace SharpRUDP
                                 Dst = destination,
                                 Id = sq.PacketId,
                                 Type = type,
+                                Flags = flags,
                                 Data = buf
                             });
                             i += _maxMTU;
@@ -421,6 +423,7 @@ namespace SharpRUDP
                                     _recvQueue = new Queue<RUDPPacket>(_recvQueue.Where(x => x.Src != kvpEndpoint.Source));
                                 Debug("+Client {0}", kvpEndpoint.Source.ToString());
                                 _clients.Add(kvpEndpoint.Source.ToString(), kvpEndpoint.Source);
+                                Send(kvpEndpoint.Source, RUDPPacketType.SYN, RUDPPacketFlags.ACK);
                                 OnClientConnect?.Invoke(kvpEndpoint.Source);
                             }
 
