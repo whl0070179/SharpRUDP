@@ -32,9 +32,22 @@ namespace SharpRUDP
 
         protected void Client(string address, int port)
         {
-            RemoteEndPoint = new IPEndPoint(IPAddress.Parse(address), port);
-            _socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            _socket.Connect(RemoteEndPoint);
+            bool connect = false;
+            foreach(IPAddress ip in Dns.GetHostEntry(address).AddressList)
+            {
+                try
+                {
+                    Console.WriteLine("Trying {0}", ip);
+                    RemoteEndPoint = new IPEndPoint(ip, port);
+                    _socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                    _socket.Connect(RemoteEndPoint);
+                    connect = true;
+                    break;
+                }
+                catch (Exception) { }
+            }
+            if (!connect)
+                throw new Exception("Unable to connect");
             Receive();
         }
 

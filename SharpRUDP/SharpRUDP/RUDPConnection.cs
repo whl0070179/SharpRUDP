@@ -178,6 +178,7 @@ namespace SharpRUDP
 
         public void Send(IPEndPoint destination, RUDPPacketType type = RUDPPacketType.DAT, RUDPPacketFlags flags = RUDPPacketFlags.NUL, byte[] data = null)
         {
+            DateTime dtNow = DateTime.Now;
             InitSequence(destination);
             RUDPSequence sq = _sequences[destination.ToString()];
             if ((data != null && data.Length < _maxMTU) || data == null)
@@ -187,6 +188,7 @@ namespace SharpRUDP
                     lock (_sendMutex)
                         _sendQueue.Enqueue(new RUDPPacket()
                         {
+                            Sent = dtNow,
                             Dst = destination,
                             Id = sq.PacketId,
                             Type = type,
@@ -213,6 +215,7 @@ namespace SharpRUDP
                             byte[] buf = data.Skip(i).Take(max).ToArray();
                             PacketsToSend.Add(new RUDPPacket()
                             {
+                                Sent = dtNow,
                                 Dst = destination,
                                 Id = sq.PacketId,
                                 Type = type,
@@ -306,6 +309,23 @@ namespace SharpRUDP
 
         public void ProcessSendQueue()
         {
+            DateTime dtNow = DateTime.Now;
+
+            /*
+            List<RUDPPacket> packetsToRetransmit = new List<RUDPPacket>();
+            lock (_ackMutex)
+                while (_unconfirmed.Count > 0)
+                    packetsToRetransmit.Add(_unconfirmed.Dequeue());
+
+            lock(_sendMutex)
+                foreach (RUDPPacket p in packetsToRetransmit.OrderBy(x => x.Seq))
+                    if ((dtNow - p.Sent).Seconds > 5)
+                        ManualSend(p);
+                    else
+                        lock(_ackMutex)
+                            _unconfirmed.Enqueue(p);
+                            */
+
             List<RUDPPacket> PacketsToSend = new List<RUDPPacket>();
             lock (_sendMutex)
                 while (_sendQueue.Count != 0)
@@ -348,7 +368,7 @@ namespace SharpRUDP
                 lock (_ackMutex)
                     _unconfirmed.Enqueue(p);
 
-                Debug("SEND -> {0}", p);
+                Debug("SEND -> {0}: {1}", p.Dst, p);
 
                 if (p.Type == RUDPPacketType.RST)
                     lock (_sequenceMutex)
