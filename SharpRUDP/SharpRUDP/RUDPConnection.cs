@@ -488,9 +488,9 @@ namespace SharpRUDP
                         }
                         else
                         {
-                            Debug("MULTIPACKET UNCOMPLETE");
+                            // TODO: Previous multipackets not adding to next iteration
+                            Debug("MULTIPACKET UNCOMPLETE {0} of {1}", Multipackets.Count, p.Qty);
                             ConfirmPacket(p);
-                            OnPacketReceived?.Invoke(p);
                         }
                     }
                     else
