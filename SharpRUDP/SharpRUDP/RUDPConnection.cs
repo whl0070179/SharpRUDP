@@ -216,38 +216,35 @@ namespace SharpRUDP
             }
             else if (data != null && data.Length >= _maxMTU)
             {
-                lock (_sendMutex)
+                int i = 0;
+                List<RUDPPacket> PacketsToSend = new List<RUDPPacket>();
+                while (i < data.Length)
                 {
-                    int i = 0;
-                    List<RUDPPacket> PacketsToSend = new List<RUDPPacket>();
-                    while (i < data.Length)
+                    int min = i;
+                    int max = _maxMTU;
+                    if ((min + max) > data.Length)
+                        max = data.Length - min;
+                    byte[] buf = data.Skip(i).Take(max).ToArray();
+                    PacketsToSend.Add(new RUDPPacket()
                     {
-                        int min = i;
-                        int max = _maxMTU;
-                        if ((min + max) > data.Length)
-                            max = data.Length - min;
-                        byte[] buf = data.Skip(i).Take(max).ToArray();
-                        PacketsToSend.Add(new RUDPPacket()
-                        {
-                            Sent = dtNow,
-                            Dst = destination,
-                            Id = pid,
-                            Type = type,
-                            Flags = flags,
-                            Data = buf
-                        });
-                        i += _maxMTU;
-                    }
-                    lock (_sendMutex)
-                        foreach (RUDPPacket p in PacketsToSend)
-                        {
-                            p.Qty = PacketsToSend.Count;
-                            _sendQueue.Enqueue(p);
-                        }
-
-                    lock(_sequenceMutex)
-                        sq.PacketId++;
+                        Sent = dtNow,
+                        Dst = destination,
+                        Id = pid,
+                        Type = type,
+                        Flags = flags,
+                        Data = buf
+                    });
+                    i += _maxMTU;
                 }
+                lock (_sendMutex)
+                    foreach (RUDPPacket p in PacketsToSend)
+                    {
+                        p.Qty = PacketsToSend.Count;
+                        _sendQueue.Enqueue(p);
+                    }
+
+                lock(_sequenceMutex)
+                    sq.PacketId++;
             }
             else
                 throw new Exception("This should not happen");
@@ -273,6 +270,7 @@ namespace SharpRUDP
 
         private bool InitSequence(IPEndPoint ep)
         {
+            bool rv = false;
             lock (_sequenceMutex)
             {
                 if (!_sequences.ContainsKey(ep.ToString()))
@@ -285,11 +283,13 @@ namespace SharpRUDP
                         PacketId = 0,
                         SkippedPackets = new List<int>()
                     };
+                    while (!_sequences.ContainsKey(ep.ToString()))
+                        Thread.Sleep(10);
                     Debug("NEW SEQUENCE: {0}", _sequences[ep.ToString()]);
-                    return true;
+                    rv = true;
                 }
-                return false;
             }
+            return rv;
         }
 
         private void ResetConnection()
@@ -342,14 +342,9 @@ namespace SharpRUDP
                 if (!p.Retransmit)
                 {
                     InitSequence(p.Dst);
-                    lock (_sequenceMutex)
-                    {
-                        while (!_sequences.ContainsKey(p.Dst.ToString()))
-                            Thread.Sleep(10);
-                        RUDPSequence sq = _sequences[p.Dst.ToString()];
-                        p.Seq = sq.Local;
-                        sq.Local++;
-                    }
+                    RUDPSequence sq = _sequences[p.Dst.ToString()];
+                    p.Seq = sq.Local;
+                    sq.Local++;
 
                     lock (_ackMutex)
                     {
@@ -392,19 +387,6 @@ namespace SharpRUDP
                 while (_recvQueue.Count != 0)
                     PacketsToRecv.Add(_recvQueue.Dequeue());
 
-            //if (PacketsToRecv.Count > 0) Debug("RECV START");
-
-            /*
-            if(IsServer)
-            {
-                Debug("QUEUE ============================================");
-                foreach(RUDPPacket p in PacketsToRecv)
-                    Debug("QUEUE: {0}", p);
-                Debug("QUEUE ============================================");
-                Thread.Sleep(2000);
-            }
-            */
-
             foreach (var kvpEndpoint in (from x in PacketsToRecv group x by x.Src into y select new { Source = y.Key, Packets = y.OrderBy(z => z.Seq) }))
             {
                 bool processEndpoint = true;
@@ -421,15 +403,14 @@ namespace SharpRUDP
 
                 foreach (RUDPPacket p in kvpEndpoint.Packets)
                 {
-                    lock(_sequenceMutex)
-                        if (sq.SkippedPackets.Contains(p.Seq))
-                        {
-                            Debug("Skip {0}", p);
-                            if(p.Qty > 0 && !p.MutiProcessed)
-                                lock(_recvMutex)
-                                    _recvQueue.Enqueue(p);
-                            continue;
-                        }
+                    if (sq.SkippedPackets.Contains(p.Seq))
+                    {
+                        Debug("Skip {0}", p);
+                        if(p.Qty > 0 && !p.MutiProcessed)
+                            lock(_recvMutex)
+                                _recvQueue.Enqueue(p);
+                        continue;
+                    }
 
                     // if (IsServer) Debug("{0} vs {1}", p.Seq, sq.Remote);
                     if (p.Seq != sq.Remote)
@@ -453,8 +434,7 @@ namespace SharpRUDP
                         break;
                     }
 
-                    lock (_sequenceMutex)
-                        sq.Remote++;
+                    sq.Remote++;
                     Debug("RECV <- {0}: {1}", kvpEndpoint.Source, p);
 
                     if (p.Type == RUDPPacketType.SYN && IsServer)
@@ -472,15 +452,13 @@ namespace SharpRUDP
                     if (p.Qty > 0 && p.Type == RUDPPacketType.DAT)
                     {
                         // TODO: Handle duplicates
-                        lock (_sequenceMutex)
-                            sq.IsProcessingMultipacket = true;
+                        sq.IsProcessingMultipacket = true;
 
                         List<RUDPPacket> Multipackets = kvpEndpoint.Packets.Where(x => x.Id == p.Id).ToList();
                         if (Multipackets.Count != p.Qty)
                         {
                             Debug("MULTIPACKET UNCOMPLETE {0} of {1}", Multipackets.Count, p.Qty);
-                            lock(_sequenceMutex)
-                                sq.SkippedPackets.Add(p.Seq);
+                            sq.SkippedPackets.Add(p.Seq);
                             ConfirmPacket(p);
                             lock (_recvMutex)
                                 _recvQueue.Enqueue(p);
@@ -488,11 +466,8 @@ namespace SharpRUDP
                         else
                         {
                             Debug("MULTIPACKET ARRIVED");
-                            lock (_sequenceMutex)
-                            {
-                                sq.IsProcessingMultipacket = false;
-                                sq.SkippedPackets.AddRange(Multipackets.Select(x => x.Seq).ToArray());
-                            }
+                            sq.IsProcessingMultipacket = false;
+                            sq.SkippedPackets.AddRange(Multipackets.Select(x => x.Seq).ToArray());
                             byte[] buf;
                             using (MemoryStream ms = new MemoryStream())
                             {
@@ -502,8 +477,7 @@ namespace SharpRUDP
                                         bw.Write(mp.Data);
                                         ConfirmPacket(mp);
                                         mp.MutiProcessed = true;
-                                        lock (_sequenceMutex)
-                                            sq.Remote++;
+                                        sq.Remote++;
                                     }
                                 buf = ms.ToArray();
                             }
@@ -524,65 +498,12 @@ namespace SharpRUDP
                             });
                         }
 
-                        /*
-                        List<RUDPPacket> Multipackets = kvpEndpoint.Packets.Where(x => x.Id == p.Id).ToList();
-                        if (Multipackets.Count == p.Qty)
-                        {
-                            Debug("MULTIPACKET");
-                            lock (_sequenceMutex)
-                                sq.Remote--;
-                            byte[] buf;
-                            using (MemoryStream ms = new MemoryStream())
-                            {
-                                using (BinaryWriter bw = new BinaryWriter(ms))
-                                    foreach (RUDPPacket mp in Multipackets)
-                                    {
-                                        bw.Write(mp.Data);
-                                        lock (_sequenceMutex)
-                                            sq.SkippedPackets.Add(mp.Seq);
-                                        ConfirmPacket(mp);
-                                        lock (_sequenceMutex)
-                                            sq.Remote++;
-                                    }
-                                buf = ms.ToArray();
-                            }
-                            Debug("MULTIPACKET DATA: {0}", Encoding.ASCII.GetString(buf));
-                            OnPacketReceived?.Invoke(new RUDPPacket()
-                            {
-                                ACK = p.ACK,
-                                Confirmed = p.Confirmed,
-                                Data = buf,
-                                Dst = p.Dst,
-                                Flags = p.Flags,
-                                Id = p.Id,
-                                Qty = p.Qty,
-                                Received = p.Received,
-                                Seq = p.Seq,
-                                Src = p.Src,
-                                Type = p.Type
-                            });
-                        }
-                        else
-                        {
-                            // TODO: Previous multipackets not adding to next iteration
-                            sq.Remote--;
-                            Debug("MULTIPACKET UNCOMPLETE {0} of {1}", Multipackets.Count, p.Qty);
-                            ConfirmPacket(p);
-                            lock(_recvMutex)
-                                foreach (RUDPPacket mp in Multipackets)
-                                {
-                                    Debug("Enqueuing {0}", mp);
-                                    _recvQueue.Enqueue(mp);
-                                }
-                            Thread.Sleep(5000);
-                        }*/
                     }
                     else
                     {
                         ConfirmPacket(p);
                         bool isProcessing = false;
-                        lock (_sequenceMutex)
-                            isProcessing = sq.IsProcessingMultipacket;
+                        isProcessing = sq.IsProcessingMultipacket;
                         if (isProcessing)
                             lock (_recvMutex)
                                 _recvQueue.Enqueue(p);
@@ -619,14 +540,12 @@ namespace SharpRUDP
         private void ConfirmPacket(RUDPPacket p)
         {
             lock (_ackMutex)
-            {
                 if (!p.Confirmed)
                 {
                     p.Confirmed = true;
                     _confirmed.Add(p.Seq);
                     _unconfirmed = new Queue<RUDPPacket>(_unconfirmed.Where(x => !p.ACK.Contains(x.Seq)));
                 }
-            }
         }
 
         private void RequestConnectionReset(IPEndPoint endPoint)
