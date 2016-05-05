@@ -25,7 +25,7 @@ namespace SharpRUDP
         {
             LocalEndPoint = new IPEndPoint(IPAddress.Parse(address), port);
             _socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            //_socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.ReuseAddress, true);
+            _socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.ReuseAddress, true);
             _socket.Bind(LocalEndPoint);
             Receive();
         }
