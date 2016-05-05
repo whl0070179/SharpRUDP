@@ -216,38 +216,35 @@ namespace SharpRUDP
             }
             else if (data != null && data.Length >= _maxMTU)
             {
-                lock (_sendMutex)
+                int i = 0;
+                List<RUDPPacket> PacketsToSend = new List<RUDPPacket>();
+                while (i < data.Length)
                 {
-                    int i = 0;
-                    List<RUDPPacket> PacketsToSend = new List<RUDPPacket>();
-                    while (i < data.Length)
+                    int min = i;
+                    int max = _maxMTU;
+                    if ((min + max) > data.Length)
+                        max = data.Length - min;
+                    byte[] buf = data.Skip(i).Take(max).ToArray();
+                    PacketsToSend.Add(new RUDPPacket()
                     {
-                        int min = i;
-                        int max = _maxMTU;
-                        if ((min + max) > data.Length)
-                            max = data.Length - min;
-                        byte[] buf = data.Skip(i).Take(max).ToArray();
-                        PacketsToSend.Add(new RUDPPacket()
-                        {
-                            Sent = dtNow,
-                            Dst = destination,
-                            Id = pid,
-                            Type = type,
-                            Flags = flags,
-                            Data = buf
-                        });
-                        i += _maxMTU;
-                    }
-                    lock (_sendMutex)
-                        foreach (RUDPPacket p in PacketsToSend)
-                        {
-                            p.Qty = PacketsToSend.Count;
-                            _sendQueue.Enqueue(p);
-                        }
-
-                    lock(_sequenceMutex)
-                        sq.PacketId++;
+                        Sent = dtNow,
+                        Dst = destination,
+                        Id = pid,
+                        Type = type,
+                        Flags = flags,
+                        Data = buf
+                    });
+                    i += _maxMTU;
                 }
+                lock (_sendMutex)
+                    foreach (RUDPPacket p in PacketsToSend)
+                    {
+                        p.Qty = PacketsToSend.Count;
+                        _sendQueue.Enqueue(p);
+                    }
+
+                lock(_sequenceMutex)
+                    sq.PacketId++;
             }
             else
                 throw new Exception("This should not happen");
@@ -273,6 +270,7 @@ namespace SharpRUDP
 
         private bool InitSequence(IPEndPoint ep)
         {
+            bool rv = false;
             lock (_sequenceMutex)
             {
                 if (!_sequences.ContainsKey(ep.ToString()))
@@ -286,10 +284,10 @@ namespace SharpRUDP
                         SkippedPackets = new List<int>()
                     };
                     Debug("NEW SEQUENCE: {0}", _sequences[ep.ToString()]);
-                    return true;
+                    rv = true;
                 }
-                return false;
             }
+            return rv;
         }
 
         private void ResetConnection()
