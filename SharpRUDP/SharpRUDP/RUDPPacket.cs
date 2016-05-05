@@ -20,6 +20,10 @@ namespace SharpRUDP
         public DateTime Received { get; set; }
         [ScriptIgnore]
         public bool Confirmed { get; set; }
+        [ScriptIgnore]
+        public bool Retransmit { get; set; }
+        [ScriptIgnore]
+        public bool MutiProcessed { get; set; }
 
         public int Seq { get; set; }
         public int Id { get; set; }

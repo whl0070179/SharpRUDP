@@ -25,7 +25,7 @@ namespace SharpRUDP
         {
             LocalEndPoint = new IPEndPoint(IPAddress.Parse(address), port);
             _socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            _socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.ReuseAddress, true);
+            //_socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.ReuseAddress, true);
             _socket.Bind(LocalEndPoint);
             Receive();
         }
@@ -33,19 +33,29 @@ namespace SharpRUDP
         protected void Client(string address, int port)
         {
             bool connect = false;
-            foreach(IPAddress ip in Dns.GetHostEntry(address).AddressList)
+            IPAddress ipAddress;
+            if(IPAddress.TryParse(address, out ipAddress))
             {
-                try
-                {
-                    Console.WriteLine("Trying {0}", ip);
-                    RemoteEndPoint = new IPEndPoint(ip, port);
-                    _socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-                    _socket.Connect(RemoteEndPoint);
-                    connect = true;
-                    break;
-                }
-                catch (Exception) { }
+                Console.WriteLine("Connecting to {0}", ipAddress);
+                RemoteEndPoint = new IPEndPoint(ipAddress, port);
+                _socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                _socket.Connect(RemoteEndPoint);
+                connect = true;
             }
+            else
+                foreach(IPAddress ip in Dns.GetHostEntry(address).AddressList)
+                {
+                    try
+                    {
+                        Console.WriteLine("Trying {0}", ip);
+                        RemoteEndPoint = new IPEndPoint(ip, port);
+                        _socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                        _socket.Connect(RemoteEndPoint);
+                        connect = true;
+                        break;
+                    }
+                    catch (Exception) { }
+                }
             if (!connect)
                 throw new Exception("Unable to connect");
             Receive();

@@ -71,13 +71,14 @@ namespace SharpRUDP.Test
             Console.WriteLine("MULTI SPLIT PACKET");
             Console.WriteLine("====================================");
 
-            for (int i = 0; i < 50; i++)
-                c.Send(i.ToString());
+            //byte[] buffer = new byte[1 * 1024];
+            c.MTU = 8;
+            byte[] buffer = new byte[512];
+            Random r = new Random();
+            r.NextBytes(buffer);
 
-            c.Send("LONGLONGLONG1");
-
-            for (int i = 0; i < 50; i++)
-                c.Send(i.ToString());
+            Console.WriteLine("{0}", c.RemoteEndPoint);
+            c.Send(c.RemoteEndPoint, RUDPPacketType.DAT, RUDPPacketFlags.NUL, buffer);
 
             Console.ReadKey();
             Console.WriteLine("====================================");
