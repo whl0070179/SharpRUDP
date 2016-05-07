@@ -9,8 +9,8 @@ namespace SharpRUDP
         public int Local { get; set; }
         public int? Remote { get; set; }
         public int PacketId { get; set; }
-        public List<int> SkippedPackets { get; set; }
-        public bool IsProcessingMultipacket { get; set; }
+        public bool IsWaitingForMultiPacket { get; set; }
+        public Dictionary<int, List<RUDPPacket>> MultiPackets { get; set; }
 
         public override string ToString()
         {

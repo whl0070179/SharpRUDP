@@ -11,30 +11,29 @@ namespace SharpRUDP
             None = 99,
         }
 
-        public static bool IsServer = false;
         private static object _debugMutex = new object();
         public static RUDPLoggerLevel LogLevel = RUDPLoggerLevel.Info;
 
-        public static void Trace(object obj, params object[] args)
+        public static void Trace(string prefix, object obj, params object[] args)
         {
             if (LogLevel <= RUDPLoggerLevel.Trace)
-                Write(obj, args);
+                Write(prefix, obj, args);
         }
 
-        public static void Info(object obj, params object[] args)
+        public static void Info(string prefix, object obj, params object[] args)
         {
             if (LogLevel <= RUDPLoggerLevel.Info)
-                Write(obj, args);
+                Write(prefix, obj, args);
         }
 
-        private static void Write(object obj, params object[] args)
+        private static void Write(string prefix, object obj, params object[] args)
         {
             lock (_debugMutex)
             {
                 if (obj.GetType() == typeof(string))
-                    Console.WriteLine(string.Format("{0} {1}", IsServer ? "[S]" : "[C]", string.Format((string)obj, args)));
+                    Console.WriteLine(string.Format("{0} {1}", prefix, string.Format((string)obj, args)));
                 else
-                    Console.WriteLine(string.Format("{0} {1}", IsServer ? "[S]" : "[C]", obj.ToString()));
+                    Console.WriteLine(string.Format("{0} {1}", prefix, obj.ToString()));
             }
         }
     }

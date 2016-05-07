@@ -6,6 +6,7 @@
         SYN,
         RST,
         DAT,
-        ACK
+        ACK,
+        RET
     }
 }

@@ -2,12 +2,15 @@
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
 
 namespace SharpRUDP
 {
     public class RUDPPacket
     {
+        private static string dataRegexStr = @"""Data"":\[[0-9,]*\]";
+        private static Regex dataRegex = new Regex(dataRegexStr, RegexOptions.None);
         private static JavaScriptSerializer _js = new JavaScriptSerializer();
 
         [ScriptIgnore]
@@ -23,7 +26,7 @@ namespace SharpRUDP
         [ScriptIgnore]
         public bool Retransmit { get; set; }
         [ScriptIgnore]
-        public bool MutiProcessed { get; set; }
+        public bool Skip { get; set; }
 
         public int Seq { get; set; }
         public int Id { get; set; }
@@ -45,7 +48,8 @@ namespace SharpRUDP
 
         public override string ToString()
         {
-            return _js.Serialize(this);
+            string js = _js.Serialize(this);
+            return dataRegex.Replace(js, "\"Data\":" + (Data == null ? 0 : Data.Length) + "b");
         }
     }
 }
