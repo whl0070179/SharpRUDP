@@ -158,6 +158,7 @@ namespace SharpRUDP
 
         public void Disconnect()
         {
+            State = ConnectionState.CLOSING;
             _isAlive = false;
             _thSend.Abort();
             _thRecv.Abort();
@@ -167,6 +168,7 @@ namespace SharpRUDP
                 Thread.Sleep(10);
             while (_thRecv.IsAlive)
                 Thread.Sleep(10);
+            State = ConnectionState.CLOSED;
         }
 
         public override void PacketReceive(IPEndPoint ep, byte[] data, int length)
