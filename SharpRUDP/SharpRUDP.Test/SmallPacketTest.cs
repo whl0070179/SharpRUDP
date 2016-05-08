@@ -8,7 +8,7 @@ namespace SharpRUDP.Test
     [TestClass]
     public class SmallPacketTest
     {
-        [TestMethod, Timeout(30000)]
+        [TestMethod, Timeout(10000)]
         public void SmallPacket()
         {
             bool finished = false;

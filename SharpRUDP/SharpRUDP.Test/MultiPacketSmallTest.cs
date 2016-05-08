@@ -21,7 +21,7 @@ namespace SharpRUDP.Test
                 Thread.Sleep(10);
             Assert.AreEqual(ConnectionState.OPEN, c.State);
 
-            byte[] buf = new byte[8 * 1024];
+            byte[] buf = new byte[1 * 1024];
             Random r = new Random(DateTime.Now.Second);
             r.NextBytes(buf);
 
