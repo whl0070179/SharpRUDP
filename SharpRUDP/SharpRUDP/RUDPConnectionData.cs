@@ -3,14 +3,21 @@ using System.Net;
 
 namespace SharpRUDP
 {
-    public class RUDPSequence
+    public class RUDPConnectionData
     {
         public IPEndPoint EndPoint { get; set; }
         public int Local { get; set; }
         public int? Remote { get; set; }
         public int PacketId { get; set; }
-        public bool IsWaitingForMultiPacket { get; set; }
-        public Dictionary<int, List<RUDPPacket>> MultiPackets { get; set; }
+        public List<RUDPPacket> ReceivedPackets { get; set; }
+        public List<RUDPPacket> Pending { get; set; }
+
+        public RUDPConnectionData()
+        {
+            PacketId = 0;
+            ReceivedPackets = new List<RUDPPacket>();
+            Pending = new List<RUDPPacket>();
+        }
 
         public override string ToString()
         {

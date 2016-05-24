@@ -22,11 +22,7 @@ namespace SharpRUDP
         [ScriptIgnore]
         public DateTime Received { get; set; }
         [ScriptIgnore]
-        public bool Confirmed { get; set; }
-        [ScriptIgnore]
         public bool Retransmit { get; set; }
-        [ScriptIgnore]
-        public bool Skip { get; set; }
 
         public int Seq { get; set; }
         public int Id { get; set; }
@@ -49,7 +45,10 @@ namespace SharpRUDP
         public override string ToString()
         {
             string js = _js.Serialize(this);
-            return dataRegex.Replace(js, "\"Data\":" + (Data == null ? 0 : Data.Length) + "b");
+            if (Data != null && Data.Length > 30)
+                return dataRegex.Replace(js, "\"Data\":" + (Data == null ? 0 : Data.Length) + "b");
+            else
+                return js;
         }
     }
 }

@@ -8,9 +8,10 @@ namespace SharpRUDP.Test
     [TestClass]
     public class MediumPacketTest
     {
-        [TestMethod, Timeout(30000)]
+        [TestMethod, Timeout(10000)]
         public void MediumPacket()
         {
+            int maxPackets = 500;
             bool finished = false;
 
             RUDPConnection s = new RUDPConnection();
@@ -26,14 +27,14 @@ namespace SharpRUDP.Test
             {
                 Assert.AreEqual("SEQUENCEDDATAMEDIUMPACKETLENGTH" + counter, Encoding.ASCII.GetString(p.Data));
                 counter++;
-                if (counter >= 500)
+                if (counter >= maxPackets)
                     finished = true;
             };
-
+            
             Random r = new Random(DateTime.Now.Second);
-            for (int i = 0; i < 500; i++)
+            for (int i = 0; i < maxPackets; i++)
             {
-                Thread.Sleep(3 * r.Next(0, 10));
+                Thread.Sleep(1 * r.Next(0, 10));
                 c.Send("SEQUENCEDDATAMEDIUMPACKETLENGTH" + i.ToString());
             }
 
@@ -42,7 +43,7 @@ namespace SharpRUDP.Test
 
             counter = 0;
             finished = false;
-            for (int i = 0; i < 500; i++)
+            for (int i = 0; i < maxPackets; i++)
                 c.Send("SEQUENCEDDATAMEDIUMPACKETLENGTH" + i.ToString());
 
             while (!finished)

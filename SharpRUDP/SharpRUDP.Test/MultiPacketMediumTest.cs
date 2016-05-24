@@ -12,6 +12,7 @@ namespace SharpRUDP.Test
         [TestMethod, Timeout(30000)]
         public void MultiPacketMedium()
         {
+            int maxPackets = 100;
             bool finished = false;
 
             RUDPConnection s = new RUDPConnection();
@@ -31,13 +32,13 @@ namespace SharpRUDP.Test
             {
                 Assert.IsTrue(p.Data.SequenceEqual(buf));
                 counter++;
-                if (counter >= 500)
+                if (counter >= maxPackets)
                     finished = true;
             };
 
-            for (int i = 0; i < 500; i++)
+            for (int i = 0; i < maxPackets; i++)
             {
-                Thread.Sleep(3 * r.Next(0, 10));
+                Thread.Sleep(1 * r.Next(0, 10));
                 c.Send(c.RemoteEndPoint, RUDPPacketType.DAT, RUDPPacketFlags.NUL, buf);
             }
 
@@ -46,7 +47,7 @@ namespace SharpRUDP.Test
 
             counter = 0;
             finished = false;
-            for (int i = 0; i < 500; i++)
+            for (int i = 0; i < maxPackets; i++)
                 c.Send(c.RemoteEndPoint, RUDPPacketType.DAT, RUDPPacketFlags.NUL, buf);
 
             while (!finished)

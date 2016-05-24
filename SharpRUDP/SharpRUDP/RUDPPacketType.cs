@@ -4,9 +4,7 @@
     {
         NUL,
         SYN,
-        RST,
         DAT,
-        ACK,
-        RET
+        ACK
     }
 }
