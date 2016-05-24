@@ -32,7 +32,6 @@ Global
 		{C1A5A429-FA58-4727-97EB-6257617F057E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C1A5A429-FA58-4727-97EB-6257617F057E}.Release|Any CPU.Build.0 = Release|Any CPU
 		{C1A5A429-FA58-4727-97EB-6257617F057E}.Travis|Any CPU.ActiveCfg = Release|Any CPU
-		{C1A5A429-FA58-4727-97EB-6257617F057E}.Travis|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

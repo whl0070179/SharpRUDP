@@ -15,7 +15,7 @@ I also tried to spin off my own RUDP implementation following the RFC and failin
 
 ## Features
 
-- Thread-safe thanks to mutex usage.
+- Thread-safe.
 - Retransmission of unacknowledged packets in the next send/reset iteration.
 - Packet data comes in JSON format (for now), so the protocol can be ported to other languages (Node.js anyone?) without much issue.
 - Pure concise, clean C# code. Avoids C++ wrappers and obscure BS. Most of the code is in **RUDPConnection.cs** and it's < 500 lines long!.
@@ -25,7 +25,6 @@ I also tried to spin off my own RUDP implementation following the RFC and failin
 
 - Different serialization options.
 - Keep the connection alive using tiny keepalive packets.
-- Retransmission of unacknowledged packets with a timer.
 
 ## About & License
 
