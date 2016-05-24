@@ -62,6 +62,7 @@
   <ItemGroup>
     <Compile Include="ConnectivityTest.cs" />
     <Compile Include="MediumPacketTest.cs" />
+    <Compile Include="MultiPacketLargeTest.cs" />
     <Compile Include="MultiPacketMediumTest.cs" />
     <Compile Include="MultiPacketSmallTest.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
