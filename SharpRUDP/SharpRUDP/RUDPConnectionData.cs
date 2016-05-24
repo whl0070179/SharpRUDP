@@ -11,6 +11,7 @@ namespace SharpRUDP
         public int PacketId { get; set; }
         public List<RUDPPacket> ReceivedPackets { get; set; }
         public List<RUDPPacket> Pending { get; set; }
+        public long Ticks { get; set; }
 
         public RUDPConnectionData()
         {

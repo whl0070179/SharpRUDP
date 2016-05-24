@@ -6,11 +6,16 @@ namespace SharpRUDP.LiveTest
     {
         static void Main(string[] args)
         {
-            new Test.Connectivity().ConnectAndDisconnect(); Console.ReadLine();
-            new Test.SmallPacketTest().SmallPacket(); Console.ReadLine();
-            new Test.MediumPacketTest().MediumPacket(); Console.ReadLine();
-            new Test.MultiPacketSmallTest().MultiPacketSmall(); Console.ReadLine();
-            new Test.MultiPacketMediumTest().MultiPacketMedium(); Console.ReadLine();
+            new Test.Connectivity().ConnectAndDisconnect(); Wait();
+            new Test.SmallPacketTest().SmallPacket(); Wait();
+            new Test.MediumPacketTest().MediumPacket(); Wait();
+            new Test.MultiPacketSmallTest().MultiPacketSmall(); Wait();
+            new Test.MultiPacketMediumTest().MultiPacketMedium(); Wait();
+        }
+
+        static void Wait()
+        {
+            //Console.ReadLine();
         }
     }
 }

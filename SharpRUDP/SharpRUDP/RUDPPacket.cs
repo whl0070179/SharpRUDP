@@ -30,7 +30,6 @@ namespace SharpRUDP
         public RUDPPacketType Type { get; set; }
         public RUDPPacketFlags Flags { get; set; }
         public byte[] Data { get; set; }
-        public int[] ACK { get; set; }
 
         public static RUDPPacket Deserialize(byte[] header, byte[] data)
         {
